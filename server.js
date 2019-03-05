@@ -10,7 +10,7 @@ const path = require('path');
 require('./db/db');
 
 //middleware
-app.use(express.static(path.join(__dirname, 'Public/build')));
+app.use(express.static(path.join(__dirname, 'billhub-graphql-react/build')));
 
 app.use(session({
     secret: "THIS IS A RANDOM STRING SECTRET",
@@ -41,10 +41,10 @@ app.use('/bills', bill);
 
 // Handles any requests that don't match the ones above
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname + '/Public/build/index.html'));
+    res.sendFile(path.join(__dirname + '/billhub-graphql-react/build/index.html'));
 });
 
 //server
-app.listen(process.env.PORT || 'http://localhost:9000', () => {
+app.listen(process.env.PORT || 9000, () => {
     console.log('listening on port 9000');
 })
