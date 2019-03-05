@@ -8,6 +8,7 @@ import RepContainer from './Pages/RepContainer/RepContainer';
 import SearchBar from './SearchBar/SearchBar';
 import { Route, Switch } from 'react-router-dom';
 import { Container, Row, Col } from 'reactstrap';
+import statesArray from './statesArray';
 const civicFeedKey = "c91d0fa0a6msh1417965add04d7cp1caaa2jsn509bcdccbd47";           
 const port = "http://localhost:9000/";
 
@@ -61,9 +62,6 @@ class App extends Component {
             throw Error(topBills.statusText)
         }
         const parsedTopBills = await topBills.json();
-        // ===================================
-        // UPDATE STATE WITH TRENDING BILLS
-        // ===================================
         this.updateTrending(parsedTopBills.data);
         console.log(`Trending bills response from Express API:${parsedTopBills.data}`)
     } catch(err){
@@ -123,7 +121,7 @@ class App extends Component {
       logged: true,
       failedEntry: false,
       _id: userId,
-      trackedBills: tracked
+      trackedBills: trackedBills
     }, function () {
       console.log(`LOGGED IN. ID: ${this.state._id}, BILLS: ${this.state.trackedBills}`);
     });
@@ -131,13 +129,15 @@ class App extends Component {
 
   addBillToTracking = async (billToTrack) => {
     
+    const cleanedId = billToTrack.bill_id.split('/').join('');
+
     const createBillInMongo = async () => {
       const createBill = await fetch(`${port}bills/`, {
         method: 'POST',
         body: JSON.stringify({
           title: billToTrack.title,
           state: billToTrack.state,
-          bill_id: billToTrack.bill_id,
+          bill_id: cleanedId,
           summary: billToTrack.summary,
           proposed: billToTrack.created_at,
           lastAction: billToTrack.updated_at,
@@ -154,7 +154,7 @@ class App extends Component {
       console.log(`TRIED TO CREATE BILL, NODE SENT:${JSON.stringify(parsedCreateBill)}`)
     }
     const addToUsersTracking = async () => {
-      const isUserTracking = await fetch(`${port}users/${this.state._id}/track/${billToTrack.bill_id}`, {
+      const isUserTracking = await fetch(`${port}users/${this.state._id}/track/${cleanedId}`, {
         method: 'PUT',
         body: JSON.stringify({
           bill: billToTrack,
@@ -171,7 +171,7 @@ class App extends Component {
       console.log("RESPONSE TO TRYING TO TRACK BILL:" + JSON.stringify(parsedIsUserTracking));
 
       if (parsedIsUserTracking.status == 200) {
-        const updateBill = await fetch(`${port}bills/track/${billToTrack.bill_id}`, {
+        const updateBill = await fetch(`${port}bills/track/${cleanedId}`, {
           method: 'PUT',
           body: JSON.stringify({
             increment: 1,
@@ -185,28 +185,31 @@ class App extends Component {
           throw Error(updateBill.statusText)
         }
         const parsedUpdateBill = await updateBill.json();
-        console.log(`INCREMENTED BILL ID ${JSON.stringify(parsedUpdateBill.data.bill_id)}`)
+        console.log(`INCREMENTED BILL ID ${JSON.stringify(parsedUpdateBill)}`)
         return parsedUpdateBill.data;
-    }
+      }
     }
     const updateStateWithAddedBill = async (updatedBill) => {
-      let updatedArray = [...this.state.bills];
-      for (let i = 0; i < updatedArray.length; i++) {
-        if (updatedArray[i].bill_id == billToTrack.bill_id) {
-          updatedArray[i].trackingCount++
+      if (updatedBill) {
+        let updatedArray = [...this.state.bills];
+        for (let i = 0; i < updatedArray.length; i++) {
+          if (updatedArray[i].bill_id == updatedBill.bill_id) {
+            updatedArray[i].trackingCount++
+          }
         }
+        this.setState({
+          trackedBills: [...this.state.trackedBills, updatedBill],
+          bills: updatedArray
+        });
+      } else {
+        console.log("Something went wrong...")
       }
-
-      this.setState({
-        trackedBills: [...this.state.trackedBills, updatedBill],
-        bills: updatedArray
-      });
     }
 
     try {
-      createBillInMongo();
-      const addedBill = addToUsersTracking();
-      updateStateWithAddedBill(addedBill);
+      await createBillInMongo();
+      const addedBill = await addToUsersTracking();
+      await updateStateWithAddedBill(addedBill);
     } catch (err) {
       console.log(err)
     }
@@ -277,9 +280,9 @@ class App extends Component {
     }
 
     try {
-      decrementBillInMongo();
-      removeBillFromUser();
-      updateReactState();
+      await decrementBillInMongo();
+      await removeBillFromUser();
+      await updateReactState();
     } catch (err) {
       console.log(err);
     }
@@ -287,8 +290,9 @@ class App extends Component {
 
   handleRegister = async (e) => {
     e.preventDefault();
-    try {
-      const loginResponse = await fetch(`${port}auth/register`, {
+
+    const registrationResponse = async () => {
+      const loginResponse = await fetch(`${port}users/register`, {
         method: 'POST',
         body: JSON.stringify({
           username: this.state.username,
@@ -306,14 +310,17 @@ class App extends Component {
         throw Error(loginResponse.statusText)
       }
       const parsedResponse = await loginResponse.json();
-      console.log('UNFILTERED RESPONSE FROM EXPRESS', loginResponse);
       console.log('JSON RESPONSE FROM EXPRESS', parsedResponse);
-      const jsonString = parsedResponse.data;
-      const id = JSON.parse(jsonString).userId;
-      const tracked = JSON.parse(jsonString).trackedBills;
-      console.log('THIS IS THE ID', id);
-      if (parsedResponse.status === 200) {
-        this.loginSuccess(id, tracked);
+      return parsedResponse;
+    }
+
+    try {
+      const registerData = await registrationResponse();
+      console.log(`register data: ${registerData}`)
+      if (registerData.status == 200) {
+        console.log("we got here")
+        console.log(`Logging in w/ id: ${registerData.data.userId} & bills: ${registerData.data.trackedBills} `)
+        this.loginSuccess(registerData.data.userId, registerData.data.trackedBills);
       } else {
         this.setState({
           failedRegister: true
@@ -326,15 +333,13 @@ class App extends Component {
 
   handleLogin = async (e) => {
     e.preventDefault();
-    try {
+
+    const loginResponse = async () => {
       const loginResponse = await fetch(`${port}users/login`, {
         method: 'POST',
         body: JSON.stringify({
           username: this.state.username,
           password: this.state.password,
-          email: this.state.email,
-          trackedBills: [],
-          trackedReps: []
         }),
         credentials: 'include',
         headers: {
@@ -346,11 +351,15 @@ class App extends Component {
       }
       const parsedResponse = await loginResponse.json();
       console.log('JSON RESPONSE FROM EXPRESS', parsedResponse);
-      const id = parsedResponse.userId;
-      const tracked = parsedResponse.trackedBills;
-      console.log('THIS IS THE ID', id);
-      if (parsedResponse.status === 200) {
-        this.loginSuccess(id, tracked);
+      return parsedResponse;
+    }
+
+    try {
+      const loginData = await loginResponse();
+      console.log(`Heres login data: ${loginData}`);
+      if (loginData.status == 200) {
+        console.log(`this is the login data: ${loginData}`)
+        this.loginSuccess(loginData.data.userId, loginData.data.trackedBills);
       } else {
         this.setState({
           failedLogin: true
@@ -361,59 +370,65 @@ class App extends Component {
     }
   }
 
-  // ================================================================================================================
-  //                                       UPDATE QUERY STATE WITH USER INPUT
-  // ================================================================================================================
   handleChange = (e) => {
     this.setState({
       [e.target.name]: e.target.value
     });
   }
 
-  // ====================================================================================================================
-  //                                    THIS SHOULD QUERY THE API WITH USER INPUT
-  // ====================================================================================================================
   getBillsFromQuery = async (e) => {
     e.preventDefault();
-    // ========================
-    // HERE WE MAKE AN API CALL
-    // ========================
-    // API PARAMS
-    // ==========
-    const state = this.state.userState.toLowerCase();
-    let q = "";
-    if (this.state.query !== "") {
-      q = "&q=" + this.state.query
+    // Filter to make state unabbreviated
+    let state = "";
+    for (let key in statesArray) {
+      if (key == this.state.userState) {
+        state = statesArray[key]
+      }
     }
+    console.log(`we are injecting this state into the query: ${state}`)
+    // Not sure how to inject this query string into GraphQL query...
+    // let q = "";
+    // if (this.state.query !== "") {
+    //   q = "&q=" + this.state.query
+    // }
     try {
-      const response = await fetch(`https://civicfeed-civicfeed-legislation-v1.p.rapidapi.com/legislation/bills?state=${state}${q}&sort=updated_at&page=1&per_page=10`, {
-        method: 'GET',
+      const graphql_query = `query{bills(first:10,jurisdiction:"${state}"){edges{node{title abstracts{abstract} id createdAt updatedAt legislativeSession{jurisdiction{name}}}}}}`;
+      const cors_api_host = 'cors-anywhere.herokuapp.com';
+      const cors_api_url = 'https://' + cors_api_host + '/';
+      const response = await fetch(`${cors_api_url}https://openstates.org/graphql`, {
+        method: 'POST',
+        body: JSON.stringify({
+          query: graphql_query
+        }),
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'X-RapidAPI-Key': civicFeedKey
+          'Content-Type': 'application/json',
+          'X-API-KEY': '70a944df-df9d-48e6-b38a-29b09cd7c3db'
         },
       });
       if (!response.ok) {
         throw Error(response.statusText);
       }
       const billsParsed = await response.json();
+      console.log(`API reponse: ${JSON.stringify(billsParsed.data.bills.edges)}`)
 
-      // ==============================
-      // NOW UPDATE THE STATE WITH DATA
-      // ==============================
-      let uncleanArray = [...billsParsed];
+      let uncleanArray = [...billsParsed.data.bills.edges];
       let cleanArray = [];
+      let summary = "";
       for (let i = 0; i < uncleanArray.length; i++) {
+        if (uncleanArray[i].node.abstracts[0]){
+          summary = uncleanArray[i].node.abstracts[0].abstract;
+        }
         let billObj = {
-          title: uncleanArray[i].title,
-          summary: uncleanArray[i].summary,
-          state: uncleanArray[i].state,
-          bill_id: uncleanArray[i].bill_id,
-          proposed: uncleanArray[i].created_at,
-          lastAction: uncleanArray[i].updated_at,
+          title: uncleanArray[i].node.title,
+          summary: summary,
+          state: uncleanArray[i].node.legislativeSession.jurisdiction.name,
+          bill_id: uncleanArray[i].node.id.split('/').join(''),
+          proposed: uncleanArray[i].node.createdAt,
+          lastAction: uncleanArray[i].node.updatedAt,
           trackingCount: 0
         };
         cleanArray.push(billObj)
+        console.log(JSON.stringify(billObj));
       }
 
       this.setState({
@@ -426,16 +441,8 @@ class App extends Component {
     }
   }
 
-  // ====================================================================================================================
-  //                                    THIS SHOULD QUERY THE API WITH USER INPUT
-  // ====================================================================================================================
   getRepsFromQuery = async (e) => {
     e.preventDefault();
-    // ========================
-    // HERE WE MAKE AN API CALL
-    // ========================
-    // API PARAMS
-    // ==========
     const state = this.state.userState.toLowerCase();
     try {
       const response = await fetch(`https://civicfeed-civicfeed-legislation-v1.p.rapidapi.com/legislation/legislators/?state=${state}`, {
@@ -450,9 +457,6 @@ class App extends Component {
       }
       const billsParsed = await response.json();
 
-      // ==============================
-      // NOW UPDATE THE STATE WITH DATA
-      // ==============================
       let uncleanArray = [...billsParsed];
       let cleanArray = [];
       for (let i = 0; i < 10; i++) {
@@ -480,11 +484,9 @@ class App extends Component {
     return (
       <div id="container">
 
-        {/* NAVIGATION */}
         <Navigation setActivePage={this.setActivePage} /> <br />
 
-        {/* SEARCH BAR - DEFAULT 1ST BUTTON */}
-        <Container>
+        <Container id="searchContainer">
           <Row className="justify-content-center">
             <Col xs={{ size: 'auto' }}>
               <SearchBar
@@ -502,7 +504,6 @@ class App extends Component {
             </Col>
           </Row> <br />
 
-          {/* MAIN CONTENT */}
           <main>
             <Switch>
               <Route exact path="/(|tracking)" render={(routeProps) => (
