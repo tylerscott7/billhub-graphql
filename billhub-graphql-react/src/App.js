@@ -10,7 +10,7 @@ import { Route, Switch } from 'react-router-dom';
 import { Container, Row, Col } from 'reactstrap';
 import statesArray from './statesArray';
 const civicFeedKey = "c91d0fa0a6msh1417965add04d7cp1caaa2jsn509bcdccbd47";           
-const port = "http://localhost:9000/";
+//const port = "http://localhost:9000/";
 
 // Failed navigation
 const My404 = () => {
@@ -51,7 +51,7 @@ class App extends Component {
 
   getTrendingBills = async () => {
     try {
-        const topBills = await fetch(`${port}bills/trending`, {
+        const topBills = await fetch(`${process.env.REACT_APP_BACKEND}bills/trending`, {
             method: 'GET',
             credentials: 'include',
             headers: {
@@ -132,7 +132,7 @@ class App extends Component {
     const cleanedId = billToTrack.bill_id.split('/').join('');
 
     const createBillInMongo = async () => {
-      const createBill = await fetch(`${port}bills/`, {
+      const createBill = await fetch(`${process.env.REACT_APP_BACKEND}bills/`, {
         method: 'POST',
         body: JSON.stringify({
           title: billToTrack.title,
@@ -154,7 +154,7 @@ class App extends Component {
       console.log(`TRIED TO CREATE BILL, NODE SENT:${JSON.stringify(parsedCreateBill)}`)
     }
     const addToUsersTracking = async () => {
-      const isUserTracking = await fetch(`${port}users/${this.state._id}/track/${cleanedId}`, {
+      const isUserTracking = await fetch(`${process.env.REACT_APP_BACKEND}users/${this.state._id}/track/${cleanedId}`, {
         method: 'PUT',
         body: JSON.stringify({
           bill: billToTrack,
@@ -171,7 +171,7 @@ class App extends Component {
       console.log("RESPONSE TO TRYING TO TRACK BILL:" + JSON.stringify(parsedIsUserTracking));
 
       if (parsedIsUserTracking.status == 200) {
-        const updateBill = await fetch(`${port}bills/track/${cleanedId}`, {
+        const updateBill = await fetch(`${process.env.REACT_APP_BACKEND}bills/track/${cleanedId}`, {
           method: 'PUT',
           body: JSON.stringify({
             increment: 1,
@@ -218,7 +218,7 @@ class App extends Component {
   untrackBill = async (billId) => {
 
     const decrementBillInMongo = async () => {
-      const updateBill = await fetch(`${port}bills/untrack/${billId}`, {
+      const updateBill = await fetch(`${process.env.REACT_APP_BACKEND}bills/untrack/${billId}`, {
         method: 'PUT',
         body: JSON.stringify({
           increment: -1,
@@ -234,7 +234,7 @@ class App extends Component {
       const parsedUpdateBill = await updateBill.json();
     }
     const removeBillFromUser = async () => {
-      const userUntrackBill = await fetch(`${port}users/${this.state._id}/untrack/${billId}`, {
+      const userUntrackBill = await fetch(`${process.env.REACT_APP_BACKEND}users/${this.state._id}/untrack/${billId}`, {
         method: 'PUT',
         credentials: 'include',
         headers: {
@@ -292,7 +292,7 @@ class App extends Component {
     e.preventDefault();
 
     const registrationResponse = async () => {
-      const loginResponse = await fetch(`${port}users/register`, {
+      const loginResponse = await fetch(`${process.env.REACT_APP_BACKEND}users/register`, {
         method: 'POST',
         body: JSON.stringify({
           username: this.state.username,
@@ -335,7 +335,7 @@ class App extends Component {
     e.preventDefault();
 
     const loginResponse = async () => {
-      const loginResponse = await fetch(`${port}users/login`, {
+      const loginResponse = await fetch(`${process.env.REACT_APP_BACKEND}users/login`, {
         method: 'POST',
         body: JSON.stringify({
           username: this.state.username,
